@@ -20,7 +20,7 @@ public class MockMarketDataGenerator {
         this.producerService = producerService;
     }
 
-    @Scheduled(fixedRate = 1000)
+    // @Scheduled(fixedRate = 1000)
     public void generateTick() {
         String symbol = symbols.get(random.nextInt(symbols.size()));
         double price = 100 + (500 - 100) * random.nextDouble();

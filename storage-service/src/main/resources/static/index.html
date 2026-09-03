@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Telemetry Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .controls { margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; }
+        .select-group { display: flex; align-items: center; gap: 10px; }
+        select { padding: 8px 12px; font-size: 15px; background: #1e1e1e; color: #fff; border: 1px solid #333; border-radius: 6px; }
+        #status { font-size: 14px; font-weight: 600; color: #aaa; }
+        .chart-card { background: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Real-Time Telemetry Dashboard</h2>
+        <div class="controls">
+            <div class="select-group">
+                <label for="symbol">Select Asset:</label>
+                <select id="symbol" onchange="fetchData()">
+                    <option value="BINANCE:BTCUSDT">BINANCE:BTCUSDT</option>
+                    <option value="AAPL">AAPL</option>
+                    <option value="MSFT">MSFT</option>
+                    <option value="TSLA">TSLA</option>
+                </select>
+            </div>
+            <div id="status">Connecting...</div>
+        </div>
+        <div class="chart-card">
+            <canvas id="stockChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let chart;
+
+        async function fetchData() {
+            const symbol = document.getElementById('symbol').value;
+            const statusEl = document.getElementById('status');
+
+            try {
+                const response = await fetch(`/api/stocks/${encodeURIComponent(symbol)}`);
+                let rawData = await response.json();
+                
+                console.log('Raw API Response:', rawData);
+
+                // Handle wrapped pagination or search response
+                let items = [];
+                if (Array.isArray(rawData)) {
+                    items = rawData;
+                } else if (rawData.content && Array.isArray(rawData.content)) {
+                    items = rawData.content;
+                } else if (rawData.hits && rawData.hits.hits) {
+                    items = rawData.hits.hits.map(h => h._source);
+                }
+
+                let validTicks = [];
+
+                // Unwrap both flat tick objects and nested Finnhub WebSocket payloads
+                items.forEach(item => {
+                    if (item.price !== undefined || item.p !== undefined) {
+                        const price = Number(item.price ?? item.p);
+                        const time = item.timestamp || item.t;
+                        if (price > 0 && !isNaN(price)) {
+                            validTicks.push({ time, price });
+                        }
+                    } else if (item.data && Array.isArray(item.data)) {
+                        item.data.forEach(sub => {
+                            const price = Number(sub.p ?? sub.price);
+                            const time = sub.t || sub.timestamp;
+                            if (price > 0 && !isNaN(price)) {
+                                validTicks.push({ time, price });
+                            }
+                        });
+                    }
+                });
+
+                if (validTicks.length === 0) {
+                    statusEl.innerText = '● Waiting for live ticks...';
+                    statusEl.style.color = '#ffb74d';
+                    return;
+                }
+
+                statusEl.innerText = `● Live (${validTicks.length} ticks)`;
+                statusEl.style.color = '#00e676';
+
+                // Standardize timestamps
+                validTicks = validTicks.map(t => ({
+                    time: typeof t.time === 'number' ? new Date(t.time).toISOString() : (t.time || new Date().toISOString()),
+                    price: t.price
+                }));
+
+                // Sort ascending by timestamp
+                validTicks.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+                // Display most recent 30 ticks
+                const recent = validTicks.slice(-30);
+                const labels = recent.map(t => new Date(t.time).toLocaleTimeString());
+                const prices = recent.map(t => t.price);
+
+                updateChart(symbol, labels, prices);
+            } catch (err) {
+                console.error('Error fetching stock ticks:', err);
+                statusEl.innerText = '● Connection Error';
+                statusEl.style.color = '#ff5252';
+            }
+        }
+
+        function updateChart(symbol, labels, prices) {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+            
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const delta = maxPrice - minPrice;
+            const padding = delta > 0 ? delta * 0.25 : minPrice * 0.001;
+
+            const yMin = minPrice - padding;
+            const yMax = maxPrice + padding;
+
+            if (chart) {
+                chart.data.labels = labels;
+                chart.data.datasets[0].label = `${symbol} Price ($)`;
+                chart.data.datasets[0].data = prices;
+                chart.options.scales.y.min = yMin;
+                chart.options.scales.y.max = yMax;
+                chart.update('none');
+            } else {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${symbol} Price ($)`,
+                            data: prices,
+                            borderColor: '#00e676',
+                            backgroundColor: 'rgba(0, 230, 118, 0.08)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            pointRadius: 2,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        animation: false,
+                        scales: {
+                            x: { 
+                                grid: { color: '#2a2a2a' }, 
+                                ticks: { color: '#aaa', maxTicksLimit: 8, maxRotation: 0 } 
+                            },
+                            y: { 
+                                min: yMin,
+                                max: yMax,
+                                grid: { color: '#2a2a2a' }, 
+                                ticks: { 
+                                    color: '#aaa',
+                                    callback: (val) => '$' + Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                } 
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        fetchData();
+        setInterval(fetchData, 3000);
+    </script>
+</body>
+</html>
