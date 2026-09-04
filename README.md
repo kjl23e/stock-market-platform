@@ -7,16 +7,16 @@ A distributed, event-driven microservices platform designed to ingest, process, 
 
 * **Real-time Ingestion:** Streams raw tick data (symbol, price, volume, timestamp) into Apache Kafka.
 * **Low-Latency Analytics:** Consumes tick streams asynchronously to compute rolling 20-period **Simple Moving Average (SMA)**, **Volume Weighted Average Price (VWAP)**, and session **Min/Max bounds** in memory.
+* **REST API Endpoints:** Exposes HTTP REST APIs for polling analytics, querying calculated state, and cross-service metric retrieval.
 * **Event-Driven Architecture:** Decoupled producers and consumers linked via Kafka (`stock-ticks` topic).
 * **Live Visualizations:** Interactive frontend dashboard built with Chart.js displaying real-time price graphs and dynamic metric cards.
-
 ---
 
 ## Tech Stack
 
 * **Backend Framework:** Java 17+, Spring Boot 3.2
+* **API Protocols:** REST API (Spring Web MVC / REST Controllers), WebSockets (STOMP / SockJS)
 * **Event Streaming:** Apache Kafka, Spring for Apache Kafka
-* **Real-Time Data Delivery:** WebSockets (STOMP / SockJS)
 * **Frontend:** HTML5, Modern JavaScript (ES6+), Chart.js
 * **Build System:** Apache Maven
 
@@ -62,13 +62,15 @@ python -m http.server 3000
 
 Navigate to http://localhost:3000 to view live telemetry.
 
-API Reference
-Analytics Endpoint
-Returns calculated metrics for a given financial symbol.
+REST API Reference
+Analytics REST Endpoint
+Returns calculated financial metrics for a given symbol via HTTP GET request.
 
 URL: /api/analytics/{symbol}
 
 Method: GET
+
+Protocol: HTTP REST
 
 Example: /api/analytics/BINANCE%3ABTCUSDT
 
