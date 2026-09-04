@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Crypto Telemetry</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #ffffff; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .card { background-color: #1e1e1e; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #2a2a2a; }
+        .card h4 { margin: 0 0 10px 0; color: #888; font-size: 0.85rem; text-transform: uppercase; }
+        .card p { margin: 0; font-size: 1.4rem; font-weight: bold; color: #00e676; }
+        .chart-box { background-color: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #2a2a2a; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Crypto Telemetry Platform</h2>
+            <span id="status" style="color: #ff5252;">Disconnected</span>
+        </div>
+        <div class="cards">
+            <div class="card"><h4>Price</h4><p id="price-val">$0.00</p></div>
+            <div class="card"><h4>20-SMA</h4><p id="sma-val">$0.00</p></div>
+            <div class="card"><h4>VWAP</h4><p id="vwap-val">$0.00</p></div>
+            <div class="card"><h4>Range (Min/Max)</h4><p id="range-val">$0 / $0</p></div>
+        </div>
+        <div class="chart-box">
+            <canvas id="cryptoChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('cryptoChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'BTC/USDT Live Price',
+                    data: [],
+                    borderColor: '#00e676',
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { ticks: { color: '#888' }, grid: { color: '#2a2a2a' } },
+                    y: { ticks: { color: '#888' }, grid: { color: '#2a2a2a' } }
+                }
+            }
+        });
+
+        function connectWebSocket() {
+            const socket = new SockJS('http://localhost:8084/ws-ticks');
+            const stompClient = Stomp.over(socket);
+            stompClient.debug = null;
+
+            stompClient.connect({}, function () {
+                document.getElementById('status').innerText = 'Streaming Live';
+                document.getElementById('status').style.color = '#00e676';
+
+                stompClient.subscribe('/topic/ticks', function (tickMessage) {
+                    const tick = JSON.parse(tickMessage.body);
+                    const timeStr = new Date(tick.timestamp).toLocaleTimeString();
+
+                    chart.data.labels.push(timeStr);
+                    chart.data.datasets[0].data.push(tick.price);
+
+                    if (chart.data.labels.length > 30) {
+                        chart.data.labels.shift();
+                        chart.data.datasets[0].data.shift();
+                    }
+                    chart.update();
+                    document.getElementById('price-val').innerText = '$' + tick.price.toFixed(2);
+                });
+            });
+        }
+
+        async function fetchAnalytics() {
+            try {
+                const response = await fetch('http://localhost:8083/api/analytics/BINANCE:BTCUSDT');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('sma-val').innerText = '$' + data.sma.toFixed(2);
+                    document.getElementById('vwap-val').innerText = '$' + data.vwap.toFixed(2);
+                    document.getElementById('range-val').innerText = '$' + data.minPrice.toFixed(0) + ' / $' + data.maxPrice.toFixed(0);
+                }
+            } catch (err) {
+                console.error("Analytics fetch error:", err);
+            }
+        }
+
+        connectWebSocket();
+        setInterval(fetchAnalytics, 2000);
+    </script>
+</body>
+</html>

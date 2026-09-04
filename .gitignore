@@ -1,5 +1,6 @@
+**/target/
+*.class
 .idea/
 *.iml
-target/
+.vscode/
 .DS_Store
-*.log
